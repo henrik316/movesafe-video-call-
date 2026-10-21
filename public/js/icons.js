@@ -11,6 +11,7 @@ const PATHS = {
   play: '<path d="M9 7.5v9l8-4.5-8-4.5Z" fill="currentColor" stroke="none"/>',
   download: '<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M5 19h14"/>',
   trash: '<path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M7 7l1 13h8l1-13"/>',
+  box: '<path d="M3 8l9-4 9 4-9 4-9-4Z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/>',
 };
 
 export function icon(name) {

@@ -37,8 +37,16 @@ export function isProduction() {
   return process.env.NODE_ENV === 'production';
 }
 
+export function demoMode() {
+  if (isProduction()) return false;
+  if (process.env.DEMO_MODE === 'false') return false;
+  return true;
+}
+
 export function showDemoBanner() {
-  if (process.env.SHOW_DEMO_BANNER === 'true') return true;
+  if (isProduction()) return false;
   if (process.env.SHOW_DEMO_BANNER === 'false') return false;
-  return !isProduction();
+  if (process.env.OWNER_EMAIL) return false;
+  if (process.env.SHOW_DEMO_BANNER === 'true') return true;
+  return demoMode();
 }

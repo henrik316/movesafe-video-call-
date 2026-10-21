@@ -56,6 +56,49 @@ Customer links (`/c/…`) stay on that visit. In an installed window, opening a 
 
 Installing requires HTTPS in production. Browsers will not offer install, and will not keep a service worker, on a plain `http://` site other than `localhost`.
 
+## Owner account
+
+Henrik Samuelsson is the only owner. Production does not create the shared demo login. On first start, set these in the server environment, not in git:
+
+```bash
+OWNER_EMAIL=henrik@example.com
+OWNER_NAME=Henrik Samuelsson
+OWNER_PASSWORD=a-long-password-you-keep-offline
+OWNER_PHONE=+15555550100
+```
+
+`+15555550100` is a reserved example. Put Henrik’s real mobile number only in the host’s secret store. The app reads `OWNER_PHONE` at runtime and does not store it in the repo or the database. The password is hashed with bcrypt. Later restarts do not overwrite it unless `OWNER_RESET_PASSWORD=true`.
+
+If `OWNER_EMAIL` is set and `OWNER_PASSWORD` is not, the server prints a one-time setup token in the console. Open `/setup`, enter that token, and choose a password. The token is not shown again.
+
+In production the session cookie is marked Secure unless `COOKIE_SECURE=false`. Leave the site on HTTPS. Login attempts are rate-limited. The owner signs in with the password and then a 6-digit text code. Staff sign in with a password only. There is no public registration page.
+
+Outside production, with no `OWNER_EMAIL`, the app runs in a clearly flagged demo mode (`alex@movesaferelocation.com` / `walkthrough-demo`) so the local desk can be tried. `NODE_ENV=production` turns that off. Set `DEMO_MODE=false` to turn it off in dev too.
+
+Keep the GitHub repository private. Henrik should be the only admin on that repo and the only admin on the hosting account (the server, DNS, and any object-storage keys). Do not commit `.env`.
+
+## Staff invites
+
+Only the owner can invite staff. An invite is an email plus the staff role, never another owner. Creating or resending it texts a 6-digit code to `OWNER_PHONE`. The code expires in 8 minutes, works once, and locks after 5 wrong tries. The server also limits how many codes it will send in a short window. The phone number is not a password.
+
+The invite link itself expires in 72 hours and works once. The new staff member opens it and chooses a name and password. The owner can see pending invites, resend them, or revoke them. Deactivate or remove ends that person’s sessions immediately. Staff cannot invite anyone or change their own role.
+
+Without SMTP, the admin page shows the link so Henrik can copy it into a message. To send mail, set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM`.
+
+Text messages use Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM`. In production, invites and other owner checks are refused until Twilio and `OWNER_PHONE` are set. In dev, without Twilio, the code is printed in the server console and labeled as dev mode. It is not sent. The same text-code step protects owner login, settings changes, removing or deactivating staff, revoking invites, deleting a recording as the owner, and changing the owner password.
+
+## Furniture inventory
+
+During a survey the specialist opens **Inventory**, picks the room (living room, bedroom 1, kitchen, garage, and so on), and builds a list. Each line has a quantity, cubic feet, and a confidence note. The running total is cubic feet for items that are actually moving, an estimated weight, and a suggested truck.
+
+Cubic feet start from a moving-industry reference table (sofa sizes, beds, dressers, appliances, box sizes, and similar). **Scan** grabs one frame from the customer’s camera and asks a vision model to name the pieces and, when it can, estimate dimensions. The server keeps the reference size unless the measured size is in a plausible range for that item, and it shows a lower confidence when the picture and the table disagree. Suggestions are not added until a person presses **Add**. **Sample while recording** repeats that about every 20 seconds. Prefer the button. A long call with sampling on sends a lot of frames.
+
+Staff can change quantity, size, and cubic feet, add from the reference search, remove a line, or mark something as not moving. Not-moving lines stay on the list and drop out of the totals. The same inventory is saved on the survey, linked to the recording, and opens from the room and from the library. Download CSV, or open the printable summary and use the browser’s Print / Save as PDF.
+
+Weight defaults to 7 pounds per cubic foot. The owner can change that, the truck sizes, the reference numbers, and the company name under **Admin**. Those changes also require a text code.
+
+Set `OPENAI_API_KEY` (and optionally `OPENAI_VISION_MODEL`, default `gpt-4o-mini`) to turn scanning on. The key stays on the server. With no key, Scan explains that, and nothing is sent anywhere. Manual entry and the reference list still work. Vision calls are billed by the provider per image. Treat the result as an approximation: measure large, soft, or unusual pieces on site before the quote goes out. The printable summary says the same thing.
+
 ## How recording works
 
 Media is peer-to-peer. The Node server only relays signaling (Socket.IO) and receives the finished recording.
@@ -77,10 +120,15 @@ This is a good fit for a moving company doing a handful of surveys at a time. It
 | Variable | Purpose |
 | --- | --- |
 | `PORT` / `HOST` | Listen address. Default `3000` / `0.0.0.0`. |
-| `SESSION_SECRET` | Required in production, 16+ characters. |
-| `STAFF_EMAIL`, `STAFF_NAME`, `STAFF_PASSWORD` | The staff account. Re-applied from the environment on each startup. Production refuses the demo password. |
-| `STAFF_USERS` | Optional extra accounts: `email\|Name\|password`, comma-separated. No commas or pipes inside a password. |
-| `SHOW_DEMO_BANNER` | Show the password on the login page. Defaults on outside production. Set `false` if the server is reachable by anyone else. |
+| `SESSION_SECRET` | Required in production, 16+ characters. Also used to hash text codes. |
+| `OWNER_EMAIL`, `OWNER_NAME`, `OWNER_PASSWORD` | The only owner. Created on first start. The password is hashed and is not reset later unless `OWNER_RESET_PASSWORD=true`. |
+| `OWNER_PHONE` | Owner mobile number for text codes. Example placeholder `+15555550100`. Never commit a real number. |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | Send those codes. Required in production before invites and other owner checks. |
+| `OPENAI_API_KEY`, `OPENAI_VISION_MODEL` | Optional furniture scan. Unset means manual inventory only. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Optional invite email. Without them, the owner copies the link. |
+| `DEMO_MODE` | Shared demo login. On outside production when `OWNER_EMAIL` is unset. Off in production. Set `false` to disable it in dev. |
+| `STAFF_EMAIL`, `STAFF_NAME`, `STAFF_PASSWORD` | Local demo owner when `OWNER_EMAIL` is unset. Defaults to the walkthrough login. Not used once an owner is configured. |
+| `SHOW_DEMO_BANNER` | Show the demo password on the login page. Off in production and whenever `OWNER_EMAIL` is set. |
 | `COOKIE_SECURE` | Set `true` when the site is HTTPS. |
 | `TRUST_PROXY` | Set `true` behind nginx or a platform proxy. |
 | `DATA_DIR` | SQLite, recordings, and posters. Default `./data`. |
@@ -92,7 +140,7 @@ This is a good fit for a moving company doing a handful of surveys at a time. It
 | `TURN_SECRET` | Shared secret for coturn `use-auth-secret`. The server mints 8-hour credentials. |
 | `TURN_USERNAME` / `TURN_CREDENTIAL` | Static TURN login, if you are not using a secret. |
 
-No Daily, Twilio, LiveKit, or other video-vendor key is required.
+No Daily, LiveKit, or other video-vendor key is required. Twilio is only for the owner’s text codes, not for the video call.
 
 ## Deploy
 
@@ -104,9 +152,13 @@ Create a production `.env` (do not use the demo password):
 
 ```bash
 SESSION_SECRET=a-long-random-string-here
-STAFF_EMAIL=alex@movesaferelocation.com
-STAFF_NAME=Alex Rivera
-STAFF_PASSWORD=choose-a-real-password
+OWNER_EMAIL=henrik@example.com
+OWNER_NAME=Henrik Samuelsson
+OWNER_PASSWORD=a-long-password-you-keep-offline
+OWNER_PHONE=+15555550100
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM=
 SHOW_DEMO_BANNER=false
 COOKIE_SECURE=true
 TRUST_PROXY=true
@@ -165,7 +217,9 @@ This is not legal advice. Moving surveys are often recorded in places with all-p
 
 ## Checks
 
-`npm run verify` boots a temporary server and, with Chrome, joins the same room as staff and as a customer, records a few seconds, and plays the file back. It uses Chrome’s fake camera so it can run unattended. `npm run walkthrough` is that same path in visible windows when a display is available.
+`npm run verify` boots a temporary server and, with Chrome, joins the same room as staff and as a customer, records a few seconds, and plays the file back. The demo owner signs in with the console text code. It uses Chrome’s fake camera so it can run unattended. `npm run walkthrough` is that same path in visible windows when a display is available.
+
+`npm run verify:office` checks the reference-table math, that a scan does not call out without an API key, customer and staff blocks on admin routes, invite expiry, and that deactivating staff ends their session.
 
 `npm run check:pwa` checks the manifest, icon sizes, the offline page, that `/api` and Socket.IO are left on the network, and that a customer link stays on `/c/…`.
 

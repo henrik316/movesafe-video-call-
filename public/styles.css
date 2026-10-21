@@ -423,6 +423,36 @@ textarea { resize: vertical; }
 .ctrl.danger { background: var(--rec); }
 .ctrl.leave { background: #3a2a24; }
 .ctrl:disabled { opacity: 0.7; }
+.call-app { position: relative; }
+.inventory-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100%);
+  z-index: 8;
+  overflow: auto;
+  background: #f7f3ec;
+  color: var(--ink);
+  padding: 16px 16px 28px;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.28);
+}
+.inventory-drawer[hidden] { display: none; }
+.inventory-head, .inventory-row, .inventory-edit { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.inventory-row, .inventory-edit { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.inventory-row.is-out { opacity: 0.55; }
+.inventory-totals { display: grid; gap: 4px; padding: 12px 0; }
+.inventory-results { display: flex; flex-wrap: wrap; gap: 8px; }
+.catalog-edits { display: grid; gap: 8px; }
+.catalog-line { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.catalog-line input { width: 110px; }
+.sms-dialog { border: 0; border-radius: 18px; padding: 22px; width: min(440px, calc(100% - 24px)); }
+.sms-dialog::backdrop { background: rgba(16, 22, 19, 0.45); }
+.admin-page { display: grid; gap: 18px; }
+.admin-page .create-card { position: static; }
 .tap-audio {
   position: absolute;
   left: 50%;

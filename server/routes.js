@@ -4,22 +4,16 @@ import bcrypt from 'bcryptjs';
 import * as db from './db.js';
 import * as signaling from './signaling.js';
 import * as recordings from './recordings.js';
+import { actor, asyncHandler, canAccessRoom, publicUser, requireStaff, startSession } from './access.js';
+import { registerAdminRoutes } from './adminRoutes.js';
+import { registerInventoryRoutes } from './inventoryRoutes.js';
+import { readOffice } from './office.js';
+import { beginChallenge, takeChallenge } from './sms.js';
+import { visionMode } from './vision.js';
 import { showDemoBanner } from './env.js';
 import { openLocal, openS3, parseRange, posterPath, storageMode } from './storage.js';
 
 const loginAttempts = new Map();
-
-function asyncHandler(fn) {
-  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-}
-
-function requireStaff(req, res, next) {
-  if (!req.session?.staff) {
-    res.status(401).json({ error: 'Staff login required.' });
-    return;
-  }
-  next();
-}
 
 function clean(value, max) {
   return String(value || '')
@@ -57,16 +51,39 @@ function publicRoom(row) {
   };
 }
 
-function staffRoom(row, counts, presence) {
+function staffRoom(row, counts, presence, inventory) {
   return {
     ...publicRoom(row),
     customerPhone: row.customer_phone,
     notes: row.notes,
     createdByName: row.created_by_name,
+    createdByEmail: row.created_by_email,
     createdAt: row.created_at,
     recordingCount: counts[row.id] || 0,
     inCall: presence[row.id] || 0,
+    inventoryCubicFeet: inventory[row.id] || 0,
   };
+}
+
+function visibleRooms(user) {
+  return db.listRooms().filter((room) => canAccessRoom(user, room));
+}
+
+function roomFor(user, id) {
+  const room = db.getRoom(String(id || '').toUpperCase());
+  if (!room || !canAccessRoom(user, room)) return null;
+  return room;
+}
+
+function inventoryMap() {
+  return Object.fromEntries(db.inventoryTotalsByRoom().map((row) => [row.room_id, row.cubic_feet || 0]));
+}
+
+function recordingAllowed(user, row) {
+  if (!row) return null;
+  const room = db.getRoom(row.room_id);
+  if (!canAccessRoom(user, room)) return null;
+  return row;
 }
 
 export function registerRoutes(app) {
@@ -75,12 +92,20 @@ export function registerRoutes(app) {
   });
 
   app.get('/api/config', (req, res) => {
-    const staff = db.primaryStaff();
+    const office = readOffice();
+    const demo = showDemoBanner() ? db.demoAccount() : null;
     res.json({
-      company: 'MoveSafe Relocation',
+      company: office.companyName,
+      tagline: office.tagline,
       domain: 'movesaferelocation.com',
-      demo: showDemoBanner()
-        ? { email: staff.email, password: staff.password, name: staff.name }
+      ai: visionMode(),
+      demo: demo
+        ? {
+            email: demo.email,
+            password: demo.password,
+            name: demo.name,
+            note: 'Dev demo only. This shared login is disabled in production.',
+          }
         : null,
     });
   });
@@ -106,20 +131,41 @@ export function registerRoutes(app) {
         return;
       }
       loginAttempts.delete(email);
-      req.session.regenerate((err) => {
-        if (err) {
-          res.status(500).json({ error: 'Could not start a session.' });
-          return;
-        }
-        req.session.staff = { email: user.email, name: user.name };
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            res.status(500).json({ error: 'Could not start a session.' });
-            return;
-          }
-          res.json({ email: user.email, name: user.name });
+      if (!user.active) {
+        res.status(403).json({ error: 'This account is deactivated.' });
+        return;
+      }
+      if (user.role === 'owner') {
+        const challenge = await beginChallenge({
+          purpose: 'owner_login',
+          actorEmail: user.email,
+          payload: { email: user.email },
         });
-      });
+        res.json({ mfaRequired: true, ...challenge });
+        return;
+      }
+      await startSession(req, user);
+      db.addAudit(user.email, 'staff.login', null);
+      res.json(publicUser(user));
+    }),
+  );
+
+  app.post(
+    '/api/login/mfa',
+    asyncHandler(async (req, res) => {
+      const taken = takeChallenge(clean(req.body?.challengeId, 80), req.body?.code);
+      if (taken.purpose !== 'owner_login') {
+        res.status(400).json({ error: 'That code is no longer valid.' });
+        return;
+      }
+      const user = db.getStaff(taken.payload.email);
+      if (!user || !user.active || user.role !== 'owner') {
+        res.status(403).json({ error: 'Owner access required.' });
+        return;
+      }
+      await startSession(req, user);
+      db.addAudit(user.email, 'owner.login', null);
+      res.json(publicUser(user));
     }),
   );
 
@@ -131,11 +177,12 @@ export function registerRoutes(app) {
   });
 
   app.get('/api/me', (req, res) => {
-    if (!req.session?.staff) {
+    const user = actor(req);
+    if (!user) {
       res.status(401).json({ error: 'Staff login required.' });
       return;
     }
-    res.json(req.session.staff);
+    res.json(user);
   });
 
   app.post(
@@ -164,7 +211,7 @@ export function registerRoutes(app) {
       });
       console.log(`Room ${room.id} created for ${room.customer_name}`);
       res.status(201).json({
-        room: staffRoom(room, db.recordingCounts(), signaling.presenceMap()),
+        room: staffRoom(room, db.recordingCounts(), signaling.presenceMap(), inventoryMap()),
       });
     }),
   );
@@ -172,16 +219,17 @@ export function registerRoutes(app) {
   app.get('/api/rooms', requireStaff, (req, res) => {
     const counts = db.recordingCounts();
     const presence = signaling.presenceMap();
-    res.json({ rooms: db.listRooms().map((row) => staffRoom(row, counts, presence)) });
+    const inventory = inventoryMap();
+    res.json({ rooms: visibleRooms(req.staff).map((row) => staffRoom(row, counts, presence, inventory)) });
   });
 
   app.get('/api/rooms/:id', requireStaff, (req, res) => {
-    const room = db.getRoom(String(req.params.id || '').toUpperCase());
+    const room = roomFor(req.staff, req.params.id);
     if (!room) {
       res.status(404).json({ error: 'Survey not found.' });
       return;
     }
-    res.json({ room: staffRoom(room, db.recordingCounts(), signaling.presenceMap()) });
+    res.json({ room: staffRoom(room, db.recordingCounts(), signaling.presenceMap(), inventoryMap()) });
   });
 
   app.get('/api/rooms/:id/public', (req, res) => {
@@ -197,7 +245,7 @@ export function registerRoutes(app) {
     '/api/recordings/start',
     requireStaff,
     asyncHandler(async (req, res) => {
-      const room = db.getRoom(String(req.body?.roomId || '').toUpperCase());
+      const room = roomFor(req.staff, req.body?.roomId);
       if (!room) {
         res.status(404).json({ error: 'Survey not found.' });
         return;
@@ -259,6 +307,7 @@ export function registerRoutes(app) {
       const row = await recordings.finishRecording(req.params.id, {
         actorEmail: req.session.staff.email,
       });
+      if (row?.room_id) db.linkInventoryRecording(row.room_id, row.id);
       res.json({ recording: recordings.serialize(row) });
     }),
   );
@@ -273,14 +322,15 @@ export function registerRoutes(app) {
   );
 
   app.get('/api/recordings', requireStaff, (req, res) => {
-    res.json({ recordings: db.listRecordings().map(recordings.serialize) });
+    const rows = db.listRecordings().filter((row) => recordingAllowed(req.staff, row));
+    res.json({ recordings: rows.map(recordings.serialize) });
   });
 
   app.get(
     '/api/recordings/:id/poster',
     requireStaff,
     (req, res) => {
-      const row = db.getRecording(req.params.id);
+      const row = recordingAllowed(req.staff, db.getRecording(req.params.id));
       const file = row?.poster_key ? posterPath(row.poster_key) : null;
       if (!file) {
         res.status(404).end();
@@ -296,7 +346,7 @@ export function registerRoutes(app) {
     '/api/recordings/:id/file',
     requireStaff,
     asyncHandler(async (req, res) => {
-      const row = db.getRecording(req.params.id);
+      const row = recordingAllowed(req.staff, db.getRecording(req.params.id));
       if (!row || row.status !== 'ready' || !row.storage_key) {
         res.status(404).json({ error: 'Recording is not ready.' });
         return;
@@ -357,14 +407,30 @@ export function registerRoutes(app) {
     '/api/recordings/:id',
     requireStaff,
     asyncHandler(async (req, res) => {
-      const ok = await recordings.deleteRecording(req.params.id);
+      const row = recordingAllowed(req.staff, db.getRecording(req.params.id));
+      if (!row) {
+        res.status(404).json({ error: 'Recording not found.' });
+        return;
+      }
+      if (req.staff.role === 'owner') {
+        res.status(403).json({
+          error: 'Confirm this delete with the text code sent to the owner phone.',
+          code: 'mfa_required',
+        });
+        return;
+      }
+      const ok = await recordings.deleteRecording(row.id);
       if (!ok) {
         res.status(404).json({ error: 'Recording not found.' });
         return;
       }
+      db.addAudit(req.staff.email, 'recording.delete', row.id);
       res.json({ ok: true });
     }),
   );
+
+  registerAdminRoutes(app);
+  registerInventoryRoutes(app);
 
   app.use('/api', (req, res) => {
     res.status(404).json({ error: 'Not found.' });

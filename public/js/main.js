@@ -3,6 +3,9 @@ import { brand, el, toast } from './dom.js';
 import { icon } from './icons.js';
 import { mountCall } from './call.js';
 import { installSlot } from './install.js';
+import { renderInventory } from './inventory.js';
+import { renderAdmin, renderInvite, renderSetup } from './admin.js';
+import { stepUp } from './stepup.js';
 import {
   copyText,
   formatBytes,
@@ -21,7 +24,13 @@ function parseRoute() {
   const path = location.pathname.replace(/\/+$/, '') || '/';
   const call = path.match(/^\/c\/([A-Za-z0-9]+)$/);
   if (call) return { name: 'call', roomId: call[1] };
+  const inventory = path.match(/^\/inventory\/([A-Za-z0-9]+)$/);
+  if (inventory) return { name: 'inventory', roomId: inventory[1] };
+  const invite = path.match(/^\/invite\/([A-Za-z0-9_-]+)$/);
+  if (invite) return { name: 'invite', token: invite[1] };
   if (path === '/login') return { name: 'login' };
+  if (path === '/admin') return { name: 'admin' };
+  if (path === '/setup') return { name: 'setup' };
   if (path === '/recordings') return { name: 'recordings' };
   if (path === '/thanks') return { name: 'thanks' };
   if (path === '/') return { name: 'home' };
@@ -62,6 +71,17 @@ async function render() {
     }
     cleanup = null;
     if (route.name === 'login') await renderLogin(root);
+    else if (route.name === 'admin') {
+      const adminUser = await currentStaff();
+      if (!adminUser) {
+        navigate('/login');
+        return;
+      }
+      await renderAdmin(root, adminUser);
+    }
+    else if (route.name === 'setup') await renderSetup(root);
+    else if (route.name === 'invite') await renderInvite(root, route.token);
+    else if (route.name === 'inventory') await renderInventory(root, route.roomId);
     else if (route.name === 'home') await renderHome(root);
     else if (route.name === 'recordings') await renderRecordings(root);
     else if (route.name === 'thanks') renderThanks(root);
@@ -83,6 +103,7 @@ function shell(active, staff, children) {
       el('nav', { class: 'topnav' }, [
         el('a', { href: '/', class: active === 'home' ? 'active' : '' }, 'Surveys'),
         el('a', { href: '/recordings', class: active === 'recordings' ? 'active' : '' }, 'Recordings'),
+        staff.role === 'owner' ? el('a', { href: '/admin', class: active === 'admin' ? 'active' : '' }, 'Admin') : null,
         installSlot('bar'),
         el('span', { class: 'who' }, staff.name),
         el('button', { class: 'btn btn-ghost', type: 'button', onclick: logout }, 'Log out'),
@@ -108,22 +129,51 @@ async function renderLogin(root) {
   const error = el('p', { class: 'form-error', role: 'alert', hidden: true });
   const email = el('input', { type: 'email', autocomplete: 'username', required: true });
   const password = el('input', { type: 'password', autocomplete: 'current-password', required: true });
-  const form = el('form', { class: 'stack' }, [
+  const form = el('form', { class: 'stack', id: 'login-form' }, [
     el('label', { class: 'field' }, [el('span', {}, 'Email'), email]),
     el('label', { class: 'field' }, [el('span', {}, 'Password'), password]),
     error,
     el('button', { class: 'btn btn-primary', type: 'submit' }, 'Sign in'),
   ]);
+  const showOwnerCode = (result) => {
+    const code = el('input', { id: 'sms-code', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', required: true });
+    const mfaError = el('p', { class: 'form-error', role: 'alert', hidden: true });
+    const mfa = el('form', { class: 'stack', id: 'mfa-form' }, [
+      el('p', {}, result.devSms
+        ? 'Dev mode: the text code was printed in the server console. It was not sent.'
+        : `Enter the 6-digit code texted to the owner phone ending ${result.phoneHint || 'on file'}.`),
+      el('label', { class: 'field' }, [el('span', {}, 'Text code'), code]),
+      mfaError,
+      el('button', { class: 'btn btn-primary', type: 'submit' }, 'Verify code'),
+    ]);
+    mfa.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      mfaError.hidden = true;
+      try {
+        await api('/api/login/mfa', { method: 'POST', body: { challengeId: result.challengeId, code: code.value } });
+        navigate('/');
+      } catch (err) {
+        mfaError.hidden = false;
+        mfaError.textContent = err.message;
+      }
+    });
+    form.replaceWith(mfa);
+    code.focus();
+  };
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     error.hidden = true;
     const button = form.querySelector('button');
     button.disabled = true;
     try {
-      await api('/api/login', {
+      const result = await api('/api/login', {
         method: 'POST',
         body: { email: email.value, password: password.value },
       });
+      if (result.mfaRequired) {
+        showOwnerCode(result);
+        return;
+      }
       navigate('/');
     } catch (err) {
       error.hidden = false;
@@ -134,7 +184,8 @@ async function renderLogin(root) {
 
   const demo = config?.demo
     ? el('div', { class: 'demo-note' }, [
-        el('p', {}, 'Demo office login'),
+        el('p', {}, [el('strong', {}, 'Dev demo only. '), config.demo.note || 'Disabled in production.']),
+        el('p', {}, 'Owner sign-in also asks for a text code. In dev that code is printed in the server console.'),
         el('p', {}, [el('strong', {}, config.demo.email), ` · ${config.demo.password}`]),
         el('button', {
           class: 'btn btn-ghost',
@@ -163,7 +214,7 @@ async function renderLogin(root) {
       el('section', { class: 'auth-card' }, [
         el('p', { class: 'eyebrow' }, 'Staff desk'),
         el('h2', {}, 'Sign in'),
-        el('p', { class: 'lede' }, 'Only MoveSafe staff can open survey rooms and the recording library.'),
+        el('p', { class: 'lede' }, 'Staff sign in to open survey rooms. There is no public registration.'),
         form,
         demo,
         installSlot('block'),
@@ -268,6 +319,7 @@ function roomCard(room, expanded) {
           formatWhen(room.createdAt),
           room.inCall ? ' · In call' : '',
           room.recordingCount ? ` · ${room.recordingCount} recording${room.recordingCount === 1 ? '' : 's'}` : '',
+          room.inventoryCubicFeet ? ` · ${room.inventoryCubicFeet} cu ft` : '',
         ]),
       ]),
     ]),
@@ -287,6 +339,7 @@ function roomCard(room, expanded) {
     ]) : null,
     el('div', { class: 'row-actions' }, [
       el('a', { class: 'btn btn-primary', href: `/c/${room.id}` }, 'Join call'),
+      el('a', { class: 'btn btn-ghost', href: `/inventory/${room.id}` }, 'Inventory'),
       el('a', { class: 'btn btn-ghost', href: `/c/${room.id}?guest=1`, target: '_blank' }, 'Customer view'),
       room.customerPhone ? el('span', { class: 'meta' }, room.customerPhone) : null,
     ]),
@@ -317,7 +370,7 @@ async function renderRecordings(root) {
       const hay = `${rec.customerName} ${rec.roomId} ${rec.origin || ''} ${rec.destination || ''}`.toLowerCase();
       if (query && !hay.includes(query)) continue;
       shown += 1;
-      grid.append(recordingCard(rec, () => render()));
+      grid.append(recordingCard(rec, me, () => render()));
     }
     empty.hidden = data.recordings.length !== 0;
     none.hidden = !(data.recordings.length && shown === 0);
@@ -346,7 +399,7 @@ async function renderRecordings(root) {
   ]));
 }
 
-function recordingCard(rec, onChange) {
+function recordingCard(rec, me, onChange) {
   const route = routeLabel(rec.origin, rec.destination);
   const poster = el('div', { class: 'poster-wrap' });
   if (rec.hasPoster) {
@@ -375,14 +428,26 @@ function recordingCard(rec, onChange) {
   } else {
     actions.push(el('span', { class: 'meta' }, 'Recording failed'));
   }
+  actions.push(el('a', { class: 'btn btn-ghost', href: `/inventory/${rec.roomId}` }, 'Inventory'));
   actions.push(el('button', {
     class: 'btn btn-ghost danger-text',
     type: 'button',
     onclick: async () => {
-      if (!confirm(`Delete the recording for ${rec.customerName}? This cannot be undone.`)) return;
-      await api(`/api/recordings/${rec.id}`, { method: 'DELETE' });
-      toast('Recording deleted.');
-      onChange();
+      try {
+        if (me.role === 'owner') {
+          await stepUp('recording_delete', { recordingId: rec.id }, {
+            title: 'Delete recording',
+            confirmLabel: 'Confirm delete',
+          });
+        } else {
+          if (!confirm(`Delete the recording for ${rec.customerName}? This cannot be undone.`)) return;
+          await api(`/api/recordings/${rec.id}`, { method: 'DELETE' });
+        }
+        toast('Recording deleted.');
+        onChange();
+      } catch (err) {
+        if (err.message !== 'Cancelled.') toast(err.message);
+      }
     },
   }, [icon('trash'), 'Delete']));
 
@@ -471,7 +536,7 @@ document.addEventListener('click', (event) => {
   if (link.target === '_blank' || link.hasAttribute('download')) return;
   const url = new URL(link.href, location.origin);
   if (url.origin !== location.origin) return;
-  if (url.pathname.startsWith('/api')) return;
+  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/print/')) return;
   event.preventDefault();
   navigate(url.pathname + url.search);
 });

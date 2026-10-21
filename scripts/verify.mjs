@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 const port = 4179;
 const origin = `http://127.0.0.1:${port}`;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'movesafe-'));
+const smsFile = path.join(dataDir, 'sms.log');
 const shotDir = process.env.SHOT_DIR || path.join(os.tmpdir(), 'movesafe-shots');
 fs.mkdirSync(shotDir, { recursive: true });
 
@@ -23,6 +24,9 @@ const server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning',
     STAFF_NAME: 'Alex Rivera',
     NODE_ENV: 'test',
     SHOW_DEMO_BANNER: 'true',
+    DEMO_MODE: 'true',
+    SMS_CAPTURE_FILE: smsFile,
+    OWNER_PHONE: '+15555550100',
     STORAGE: 'local',
     TRANSCODE: 'auto',
   },
@@ -44,6 +48,11 @@ async function waitForHealth() {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error('Server did not start');
+}
+
+function latestSmsCode(file) {
+  const lines = fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
+  return JSON.parse(lines[lines.length - 1]).code;
 }
 
 function watch(page, label) {
@@ -100,6 +109,9 @@ try {
   await staff.getByLabel('Email').fill('alex@movesaferelocation.com');
   await staff.getByLabel('Password').fill('walkthrough-demo');
   await staff.getByRole('button', { name: 'Sign in' }).click();
+  await staff.getByLabel('Text code').waitFor();
+  await staff.getByLabel('Text code').fill(latestSmsCode(smsFile));
+  await staff.getByRole('button', { name: 'Verify code' }).click();
   await staff.getByRole('heading', { name: 'Video surveys' }).waitFor();
   console.log('step create room');
 
@@ -222,8 +234,10 @@ try {
   await staff.screenshot({ path: path.join(shotDir, 'recordings_playback.png') });
   await staff.getByRole('button', { name: 'Close' }).click();
 
-  staff.once('dialog', (dialog) => dialog.accept());
   await staff.getByRole('button', { name: 'Delete recording for Jordan Lee' }).click();
+  await staff.getByLabel('Text code').waitFor();
+  await staff.getByLabel('Text code').fill(latestSmsCode(smsFile));
+  await staff.getByRole('button', { name: 'Confirm delete' }).click();
   await staff.getByText('No recordings yet').waitFor();
 
   console.log('Verify passed');

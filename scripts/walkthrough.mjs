@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 const port = 4181;
 const origin = `http://127.0.0.1:${port}`;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'movesafe-walk-'));
+const smsFile = path.join(dataDir, 'sms.log');
 const server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'server/index.js'], {
   cwd: process.cwd(),
   env: {
@@ -20,6 +21,9 @@ const server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning',
     STAFF_NAME: 'Alex Rivera',
     NODE_ENV: 'test',
     SHOW_DEMO_BANNER: 'true',
+    DEMO_MODE: 'true',
+    SMS_CAPTURE_FILE: smsFile,
+    OWNER_PHONE: '+15555550100',
     STORAGE: 'local',
     TRANSCODE: 'auto',
     DISPLAY: process.env.DISPLAY || ':1',
@@ -88,6 +92,10 @@ try {
   await staff.goto(`${origin}/login`);
   await pause(600);
   await staff.getByRole('button', { name: 'Use demo login' }).click();
+  await staff.getByLabel('Text code').waitFor();
+  const smsLines = fs.readFileSync(smsFile, 'utf8').trim().split('\n').filter(Boolean);
+  await staff.getByLabel('Text code').fill(JSON.parse(smsLines.at(-1)).code);
+  await staff.getByRole('button', { name: 'Verify code' }).click();
   await staff.getByRole('heading', { name: 'Video surveys' }).waitFor();
   await pause(700);
   await staff.getByLabel('Customer name').fill('Jordan Lee');

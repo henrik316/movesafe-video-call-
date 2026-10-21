@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { copyText, formatClock, formatCode, routeLabel } from './format.js';
 import { CallRecorder } from './recorder.js';
 import { installSlot } from './install.js';
+import { mountInventory } from './inventory.js';
 
 function mediaError(err) {
   if (err?.name === 'NotAllowedError') {
@@ -594,6 +595,7 @@ class CallSession {
           this.control('camera', 'cam', 'Camera'),
           this.control('flip', 'flip', 'Rear cam'),
           this.isStaff ? this.control('record', 'record', 'Record') : null,
+          this.isStaff ? this.control('inventory', 'box', 'Inventory') : null,
           this.isStaff ? this.control('invite', 'link', 'Invite') : null,
           this.control('leave', 'leave', 'Leave'),
         ]),
@@ -606,6 +608,7 @@ class CallSession {
     this.root.querySelector('[data-action="invite"]')?.addEventListener('click', () => this.copyInvite());
     this.root.querySelector('[data-action="leave"]').addEventListener('click', () => this.leave());
     this.updateControls();
+    if (this.isStaff) this.inventory = mountInventory(this);
     if (sessionStorage.getItem('movesafe-rear-tip') === 'off') this.dismissTip();
   }
 
@@ -742,6 +745,7 @@ class CallSession {
       this.socket.removeAllListeners();
       this.socket.disconnect();
     }
+    this.inventory?.destroy();
     document.body.classList.remove('in-call');
     if (redirect) location.href = this.isStaff ? '/' : '/thanks';
   }

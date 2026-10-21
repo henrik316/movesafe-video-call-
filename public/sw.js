@@ -1,4 +1,4 @@
-const CACHE = 'movesafe-shell-v2';
+const CACHE = 'movesafe-shell-v3';
 
 const SHELL = [
   '/',
@@ -13,6 +13,9 @@ const SHELL = [
   '/js/format.js',
   '/js/icons.js',
   '/js/install.js',
+  '/js/inventory.js',
+  '/js/admin.js',
+  '/js/stepup.js',
   '/js/recorder.js',
   '/fonts/fraunces-latin.woff2',
   '/fonts/fraunces-latin-ext.woff2',

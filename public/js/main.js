@@ -2,6 +2,7 @@ import { api, currentStaff } from './api.js';
 import { brand, el, toast } from './dom.js';
 import { icon } from './icons.js';
 import { mountCall } from './call.js';
+import { installSlot } from './install.js';
 import {
   copyText,
   formatBytes,
@@ -82,6 +83,7 @@ function shell(active, staff, children) {
       el('nav', { class: 'topnav' }, [
         el('a', { href: '/', class: active === 'home' ? 'active' : '' }, 'Surveys'),
         el('a', { href: '/recordings', class: active === 'recordings' ? 'active' : '' }, 'Recordings'),
+        installSlot('bar'),
         el('span', { class: 'who' }, staff.name),
         el('button', { class: 'btn btn-ghost', type: 'button', onclick: logout }, 'Log out'),
       ]),
@@ -151,7 +153,7 @@ async function renderLogin(root) {
       el('section', { class: 'brand-panel' }, [
         brand(null),
         el('h1', {}, 'Video walkthroughs for careful moves.'),
-        el('p', {}, 'Survey a home with the customer, then keep the recording with the estimate. They join from a phone browser. No app, no account.'),
+        el('p', {}, 'Survey a home with the customer, then keep the recording with the estimate. They join from a phone browser. No account is required, and installing the app is optional.'),
         el('ul', { class: 'points' }, [
           el('li', {}, 'Share a link. They walk the house on the rear camera.'),
           el('li', {}, 'Record both sides of the call when you are ready.'),
@@ -164,6 +166,7 @@ async function renderLogin(root) {
         el('p', { class: 'lede' }, 'Only MoveSafe staff can open survey rooms and the recording library.'),
         form,
         demo,
+        installSlot('block'),
       ]),
     ]),
   );
@@ -448,6 +451,7 @@ function renderThanks(root) {
     el('h1', {}, 'You’re all set'),
     el('p', { class: 'lede' }, 'Thanks for walking through the home with MoveSafe Relocation. You can close this page.'),
     el('p', { class: 'fine' }, 'If this visit was recorded, it is used to prepare your moving estimate and is kept by the MoveSafe office.'),
+    installSlot('block'),
   ]));
 }
 
@@ -474,3 +478,7 @@ document.addEventListener('click', (event) => {
 
 window.addEventListener('popstate', () => render());
 render();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}

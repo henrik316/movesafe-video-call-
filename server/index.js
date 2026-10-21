@@ -110,7 +110,17 @@ app.use(express.json({ limit: '1mb' }));
 registerRoutes(app);
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
-app.use(express.static(publicDir, { index: 'index.html' }));
+app.use(express.static(publicDir, {
+  index: 'index.html',
+  setHeaders(res, filePath) {
+    if (filePath.endsWith(`${path.sep}sw.js`) || filePath.endsWith('.webmanifest')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+    if (filePath.endsWith('.webmanifest')) {
+      res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    }
+  },
+}));
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
     next();

@@ -1,6 +1,6 @@
 # MoveSafe Relocation — video walkthroughs
 
-Browser video calls for MoveSafe staff and their customers. A specialist opens a survey room, sends a link, and the customer joins from a phone or desktop browser. No account and no app install. Staff can record the whole call — every participant’s picture and voice — and play it back from the office library.
+Browser video calls for MoveSafe staff and their customers. A specialist opens a survey room, sends a link, and the customer joins from a phone or desktop browser. No account is required. Installing MoveSafe is optional — a customer can still join from the browser. Staff can record the whole call — every participant’s picture and voice — and play it back from the office library.
 
 The local demo does not need a paid video API. Calls use WebRTC. A small Node server handles staff login, room links, signaling, and the saved recordings.
 
@@ -40,7 +40,21 @@ Optional: copy `.env.example` to `.env` to change the port, password, or storage
 
 Customers on a phone should use **Rear cam** while they walk room to room. The self-view mirrors the front camera only.
 
-`getUserMedia` works on `localhost` without HTTPS. Any other host must be served over HTTPS, or the browser will refuse the camera.
+`getUserMedia` works on `localhost` without HTTPS. Any other host must be served over HTTPS, or the browser will refuse the camera. Installing the app has the same rule: production needs HTTPS. `localhost` is the exception browsers already allow.
+
+## Install the app
+
+MoveSafe is a progressive web app. Staff and customers can keep it on a phone home screen or install it on a desktop. Joining a survey does not require the install.
+
+- **Desktop Chrome or Edge.** Open the desk and use **Install app** when the browser offers it. You can also use the install icon in the address bar.
+- **Android Chrome.** The same **Install app** button, or Chrome’s install prompt, adds MoveSafe to the home screen. It opens in its own window, without the browser toolbar.
+- **iPhone and iPad.** Safari does not show an install button. Open the page in Safari, tap **Share**, then **Add to Home Screen**. The icon is labeled MoveSafe.
+
+A video visit still needs a connection. The installed app saves the page shell so it opens quickly, and it shows a short offline page when the network is down. Login, call signaling, uploads, and recordings are not saved for offline use.
+
+Customer links (`/c/…`) stay on that visit. In an installed window, opening a survey link loads that room rather than replacing it with the home screen. On Android, Chrome can open those in-scope links in the installed app. On iPhone, a link from Messages usually opens Safari, which is enough to join. The home-screen icon itself opens the staff desk at `/`. If an older iPhone pins the page that was open when you tapped Add to Home Screen, the survey link in Safari still works.
+
+Installing requires HTTPS in production. Browsers will not offer install, and will not keep a service worker, on a plain `http://` site other than `localhost`.
 
 ## How recording works
 
@@ -147,16 +161,25 @@ This is not legal advice. Moving surveys are often recorded in places with all-p
 - Keep recordings only as long as the estimate, the job, or a dispute needs them. Set `RECORDING_TTL_DAYS` (90 is a reasonable office default) and delete sooner when a customer asks. The library has a delete button for that request.
 - Limit who can sign in. The recording library is staff-only.
 - Mention recording in the customer agreement, and do not use a survey recording for advertising without a separate permission.
-- Cameras and microphones stay in the browser. Customers are not asked to install anything, which also means a refreshed page or a denied permission ends their side of the call — say that if a room drops.
+- Cameras and microphones stay in the browser. Customers are not required to install anything. A refreshed page or a denied permission ends their side of the call — say that if a room drops.
 
 ## Checks
 
 `npm run verify` boots a temporary server and, with Chrome, joins the same room as staff and as a customer, records a few seconds, and plays the file back. It uses Chrome’s fake camera so it can run unattended. `npm run walkthrough` is that same path in visible windows when a display is available.
 
+`npm run check:pwa` checks the manifest, icon sizes, the offline page, that `/api` and Socket.IO are left on the network, and that a customer link stays on `/c/…`.
+
+Lighthouse 12 and newer dropped the PWA category. Installability is still scored by Lighthouse 11:
+
+```bash
+npx lighthouse@11.7.1 http://localhost:3000/login --only-categories=pwa --chrome-flags="--headless=new --no-sandbox"
+```
+
 ## Layout
 
 - `server/` — Express, SQLite sessions and records, Socket.IO signaling, recording uploads, optional S3
-- `public/` — the staff desk, the customer lobby, and the call
+- `public/` — the staff desk, the customer lobby, the call, `manifest.webmanifest`, `sw.js`, and `offline.html`
+- `public/icons/` — home-screen icons, including maskable and Apple touch icons. Regenerate with `python3 scripts/generate-icons.py` (needs Pillow).
 - `deploy/` — nginx, systemd, and coturn samples
 - `data/` — created at runtime and not committed
 

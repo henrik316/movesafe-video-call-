@@ -3,6 +3,7 @@ import { brand, el, toast } from './dom.js';
 import { icon } from './icons.js';
 import { copyText, formatClock, formatCode, routeLabel } from './format.js';
 import { CallRecorder } from './recorder.js';
+import { installSlot } from './install.js';
 
 function mediaError(err) {
   if (err?.name === 'NotAllowedError') {
@@ -267,6 +268,7 @@ class CallSession {
           ...fields,
           this.error,
           el('div', { class: 'row-actions' }, [this.enableBtn, this.flipBtn, this.joinBtn]),
+          installSlot('block'),
         ]),
       ]),
     );

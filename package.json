@@ -10,6 +10,7 @@
     "start": "node --disable-warning=ExperimentalWarning server/index.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
     "verify": "node --disable-warning=ExperimentalWarning scripts/verify.mjs",
+    "check:pwa": "node --disable-warning=ExperimentalWarning scripts/check-pwa.mjs",
     "walkthrough": "node --disable-warning=ExperimentalWarning scripts/walkthrough.mjs"
   },
   "dependencies": {

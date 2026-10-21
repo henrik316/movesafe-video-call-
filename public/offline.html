@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f4d3a" />
+    <title>Offline · MoveSafe Relocation</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: 28px 20px;
+        background:
+          radial-gradient(700px 320px at 0% 0%, rgba(196, 146, 58, 0.18), transparent 50%),
+          #f7f3ec;
+        color: #17261b;
+        font: 16px/1.45 "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+      }
+      main { width: min(440px, 100%); display: grid; gap: 14px; }
+      .mark { width: 56px; height: 56px; }
+      h1 {
+        margin: 0;
+        font-family: Georgia, "Iowan Old Style", serif;
+        font-size: clamp(2rem, 6vw, 2.6rem);
+        letter-spacing: -0.03em;
+        line-height: 1.05;
+      }
+      p { margin: 0; color: #3e5146; }
+      button {
+        justify-self: start;
+        margin-top: 6px;
+        border: 0;
+        border-radius: 999px;
+        min-height: 44px;
+        padding: 10px 18px;
+        background: #1f4d3a;
+        color: #f7f3ec;
+        font: inherit;
+        font-weight: 650;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="16" fill="#1F4D3A"/>
+        <path d="M12 31.5 32 14l20 17.5V51a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V31.5Z" fill="#F4EFE6"/>
+        <rect x="28.5" y="36" width="7" height="17" rx="1.2" fill="#C4923A"/>
+      </svg>
+      <p style="letter-spacing:.14em;text-transform:uppercase;font-size:.75rem;font-weight:700;color:#a67c3d;">MoveSafe Relocation</p>
+      <h1>You’re offline</h1>
+      <p>This page is saved on your device, so MoveSafe can open quickly. A video visit still needs a connection for the camera, the call, and any recording.</p>
+      <p>Reconnect, then try the survey link again.</p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

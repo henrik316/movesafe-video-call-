@@ -1,0 +1,16 @@
+[Unit]
+Description=MoveSafe Relocation video desk
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/movesafe
+EnvironmentFile=/opt/movesafe/.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server/index.js
+Restart=on-failure
+RestartSec=3
+# Optional: run as a dedicated user that owns /opt/movesafe/data
+# User=movesafe
+
+[Install]
+WantedBy=multi-user.target

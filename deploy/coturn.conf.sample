@@ -1,0 +1,17 @@
+# Minimal coturn config for MoveSafe.
+# Install coturn, set a long static-auth-secret, open UDP/TCP 3478, and relay UDP 49152-65535.
+# Then set the same secret as TURN_SECRET and list the URLs in TURN_URLS.
+# The app mints 8-hour usernames; you do not put a long-lived password in the browser.
+
+listening-port=3478
+fingerprint
+lt-cred-mech
+use-auth-secret
+static-auth-secret=REPLACE_WITH_A_LONG_RANDOM_SECRET
+realm=video.movesaferelocation.com
+total-quota=100
+stale-nonce=600
+no-multicast-peers
+
+# If this host is behind a firewall, set its public address.
+# external-ip=203.0.113.10
